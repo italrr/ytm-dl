@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+import sys
+import subprocess
+from urllib import parse
+from ytmusicapi import YTMusic
+
+ytmusic = YTMusic()
+
+url = sys.argv[1]
+
+id = parse.parse_qs(parse.urlparse(url).query)['v'][0]
+
+print("fetching %s | %s..." % (url, id))
+
+song = ytmusic.get_song(id)
+
+channel_id = song["videoDetails"]["channelId"]
+title = song["videoDetails"]["title"]
+artist = song["videoDetails"]["author"]
+album = ""
+file_path = title+".mp3";
+
+artist_info = ytmusic.get_artist(channel_id)
+
+def get_collection(root):
+    total = []
+    for obj in root: 
+        total.append(obj["browseId"])
+    return total
+
+def strip_album(album):
+    if type(album) is dict:
+        if "name" in album:
+            return album["name"]
+        else: 
+            print("unknown album", album)
+    else:
+        return album
+
+def scrap_collection(name, artist_info): 
+    songs = []
+    if name in artist_info:
+        collection = get_collection(artist_info[name]["results"])
+        for albumId in collection:
+            album = ytmusic.get_album(albumId)
+            for song in album["tracks"]:
+                songs.append({"title": song["title"], "videoId": song["videoId"], "album": strip_album(song["album"])})
+        return songs
+    else:
+        print("this artist doesn't have %s" % name)
+        return []
+    
+def get_all_songs(artist_info):
+    songs = []
+    # plain list
+    for song in artist_info["songs"]["results"]: 
+        songs.append({"title": song["title"], "videoId": song["videoId"], "album": strip_album(song["album"])})
+    # albums
+    songs = songs + scrap_collection("albums", artist_info)
+    # singles
+    songs = songs + scrap_collection("singles", artist_info)
+    return songs
+    
+all_songs = get_all_songs(artist_info)
+
+for song in all_songs:
+    if song["videoId"] == id:
+        album = song["album"]
+
+print("fetched metadata for %s: title: %s | artist: %s | album: %s" % (id, title, artist, album))
+print("proceeding downloading song using yt_dl...")
+
+yt_dl_command = [
+    'yt-dlp',
+    '-f',
+    'bestaudio',
+    '--extract-audio',
+    '-o',
+    file_path,
+    '--audio-format',
+    'mp3',
+    '--audio-quality',
+    '0',
+    url
+]
+
+process = subprocess.Popen(yt_dl_command, stdin=subprocess.DEVNULL)  
+process.wait()
+
+eyeD3_command = [
+    'eyeD3',
+    '-t',
+    '%s' % title,
+    '-a',
+    '%s' % artist,
+    '-A',
+    '%s' % album,
+    file_path
+]
+
+print("proceeding to tag song using eyeD3...")
+
+process = subprocess.Popen(eyeD3_command,stdin=subprocess.PIPE)  
+process.wait()
