@@ -11,6 +11,9 @@ url = sys.argv[1]
 
 id = parse.parse_qs(parse.urlparse(url).query)['v'][0]
 
+# recreate to remove playlist
+url = "https://music.youtube.com/watch?v=%s" % id
+
 print("fetching %s | %s..." % (url, id))
 
 song = ytmusic.get_song(id)
